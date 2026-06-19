@@ -1,0 +1,1 @@
+{"root":["./src/engine/candidates.ts","./src/engine/caption.ts","./src/engine/color.ts","./src/engine/constants.ts","./src/engine/engine.test.ts","./src/engine/index.ts","./src/engine/manipulate.ts","./src/engine/stimulation.ts","./src/engine/suggest.ts","./src/engine/types.ts","./src/engine/vibrating.ts"],"version":"5.9.3"}
