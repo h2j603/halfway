@@ -10,10 +10,11 @@ permissions:
   pages: write
   id-token: write
 
-# Allow one concurrent deployment; let an in-progress run finish.
+# One deployment at a time; cancel a superseded/stuck in-progress run so a new
+# push is never blocked behind it (GitHub performs the cancellation internally).
 concurrency:
   group: pages
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   build:
