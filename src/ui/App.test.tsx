@@ -102,9 +102,18 @@ describe('App — runtime smoke', () => {
     });
   });
 
-  it('pinning adds an entry to the side panel', () => {
+  it('+핀 flashes confirmation WITHOUT opening the panel', () => {
     render(<App />);
     fireEvent.click(screen.getByText('+ 핀'));
+    // The panel stays closed; only a transient ＋ flash appears.
+    expect(document.querySelector('.panel')!.className).not.toContain('open');
+    expect(document.querySelector('.pin-flash')).not.toBeNull();
+  });
+
+  it('the pin shows up once the 핀 패널 is opened', () => {
+    render(<App />);
+    fireEvent.click(screen.getByText('+ 핀'));
+    fireEvent.click(screen.getByText('핀 패널'));
     const panel = document.querySelector('.panel')!;
     expect(panel.className).toContain('open');
     expect(within(panel as HTMLElement).getAllByText(/#[0-9A-F]{6}/i).length).toBeGreaterThan(0);

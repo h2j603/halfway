@@ -55,6 +55,8 @@ export function App() {
   const [panelOpen, setPanelOpen] = useState(false);
   const [pins, setPins] = useState<Pin[]>(loadPins);
   const [dialLevel, setDialLevel] = useState(0.5);
+  // Bumped on each pin-add to replay the transient "＋" confirmation flash.
+  const [pinFlash, setPinFlash] = useState(0);
 
   // Pins persist across reloads.
   useEffect(() => {
@@ -83,7 +85,8 @@ export function App() {
 
   function addPin() {
     setPins((ps) => [{ id: Date.now(), pair }, ...ps]);
-    setPanelOpen(true);
+    // Just a brief "＋" flash — does NOT open the panel (that's the 핀 패널 button).
+    setPinFlash(Date.now());
   }
 
   function onDialChange(level: number) {
@@ -164,6 +167,12 @@ export function App() {
 
           {mode === 'diagnosis' && (
             <Diagnosis pair={pair} onSeed={setPair} onApply={setPair} />
+          )}
+
+          {pinFlash > 0 && (
+            <div className="pin-flash" key={pinFlash} aria-hidden="true">
+              ＋
+            </div>
           )}
 
           <div className="overlay">

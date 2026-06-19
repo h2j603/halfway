@@ -11,7 +11,8 @@ interface Props {
  * pair, sorted by hue distance so the strip reads as a smooth sweep.
  */
 export function SpectrumStrip({ anchor, onPick }: Props) {
-  const candidates = useMemo(() => generateCandidates(anchor, 9, 0.07), [anchor]);
+  // Keep the strip small — a handful of nearby options, not an overwhelming row.
+  const candidates = useMemo(() => generateCandidates(anchor, 5, 0.07), [anchor]);
 
   return (
     <div className="spectrum">

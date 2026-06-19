@@ -201,6 +201,35 @@ button {
   color: var(--warn);
 }
 
+/* transient "＋" confirmation when a pin is added (auto-fades, no panel) */
+.pin-flash {
+  position: absolute;
+  left: 50%;
+  top: 42%;
+  transform: translate(-50%, -50%);
+  font-size: 72px;
+  font-weight: 300;
+  color: #fff;
+  text-shadow: 0 2px 16px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+  z-index: 40;
+  animation: pin-flash 0.85s ease forwards;
+}
+@keyframes pin-flash {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.5);
+  }
+  22% {
+    opacity: 0.95;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -60%) scale(1.3);
+  }
+}
+
 /* axis hints, top-right of field, very faint */
 .axis-hint {
   position: absolute;
