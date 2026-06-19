@@ -15,6 +15,7 @@ const body = renderToStaticMarkup(<App />);
 
 const html = `<!doctype html>
 <html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Halfway — snapshot</title>
 <style>${css}
 html,body{height:100%}
