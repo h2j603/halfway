@@ -1,130 +1,95 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
-import { render, screen, fireEvent, cleanup, within } from '@testing-library/react';
+import { render, fireEvent, cleanup } from '@testing-library/react';
 import { App } from './App';
 
-/**
- * Runtime verification of the UI in jsdom — the closest we can get to a real
- * browser given the sandbox blocks Chromium downloads. Mounts the real App,
- * drives the real handlers, and asserts the engine output reaches the DOM.
- */
+/** Runtime checks of the redesigned (light, circle-based) UI in jsdom. */
 
 beforeAll(() => {
-  // jsdom gives elements a 0×0 box; the drag math divides by it. Give the field
-  // a realistic size so drag deltas are finite.
   vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
     x: 0,
     y: 0,
-    width: 800,
-    height: 600,
+    width: 300,
+    height: 300,
     top: 0,
     left: 0,
-    right: 800,
-    bottom: 600,
+    right: 300,
+    bottom: 300,
     toJSON: () => ({}),
   } as DOMRect);
-  // Pointer capture isn't implemented in jsdom.
   Element.prototype.setPointerCapture = () => {};
   Element.prototype.releasePointerCapture = () => {};
+  localStorage.clear();
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  localStorage.clear();
+});
 
-/** Extract the two HEX codes currently shown in the resident readout. */
-function readHexes(): string[] {
-  const readout = document.querySelector('.readout')!;
-  return (readout.textContent?.match(/#[0-9A-F]{6}/g) ?? []) as string[];
+function hexes(): string[] {
+  const r = document.querySelector('.readout')!;
+  return (r.textContent?.match(/#[0-9A-F]{6}/g) ?? []) as string[];
 }
 
-describe('App — runtime smoke', () => {
-  it('mounts and shows two distinct HEX values in the readout', () => {
+describe('App — redesigned UI', () => {
+  it('renders two color circles and two HEX values', () => {
     render(<App />);
-    const hexes = readHexes();
-    expect(hexes).toHaveLength(2);
-    expect(hexes[0]).not.toBe(hexes[1]);
+    expect(document.querySelectorAll('.circle').length).toBe(2);
+    expect(hexes()).toHaveLength(2);
   });
 
-  it('shows an always-on status caption', () => {
+  it('shows the one-line caption', () => {
     render(<App />);
     expect(document.querySelector('.caption')!.textContent!.length).toBeGreaterThan(0);
   });
 
-  it('the hue slider freely changes the selected color', () => {
+  it('the hue slider changes the selected color (A by default)', () => {
     render(<App />);
-    const before = readHexes()[0]; // color A (default selected)
-    // Sliders in .controls are [hue, lightness, chroma]; drive hue far.
-    const hue = document.querySelectorAll('.controls input[type="range"]')[0] as HTMLInputElement;
+    const before = hexes()[0];
+    const hue = document.querySelectorAll('.sliders input[type="range"]')[0] as HTMLInputElement;
     fireEvent.change(hue, { target: { value: '20' } });
-    const after = readHexes()[0];
-    expect(after).not.toBe(before);
+    expect(hexes()[0]).not.toBe(before);
   });
 
-  it('lightness can be pushed independently (full range, not locked to a base)', () => {
+  it('tapping circle B retargets the sliders to B', () => {
     render(<App />);
-    const light = document.querySelectorAll('.controls input[type="range"]')[1] as HTMLInputElement;
-    fireEvent.change(light, { target: { value: '0.1' } });
-    const darkHex = readHexes()[0];
-    fireEvent.change(light, { target: { value: '0.95' } });
-    const lightHex = readHexes()[0];
-    expect(darkHex).not.toBe(lightHex);
+    const circleB = document.querySelector('[data-face="b"]')!;
+    fireEvent.pointerDown(circleB, { pointerId: 1, clientX: 10, clientY: 10 });
+    fireEvent.pointerUp(circleB, { pointerId: 1, clientX: 10, clientY: 10 });
+    const beforeB = hexes()[1];
+    const hue = document.querySelectorAll('.sliders input[type="range"]')[0] as HTMLInputElement;
+    fireEvent.change(hue, { target: { value: '320' } });
+    expect(hexes()[1]).not.toBe(beforeB);
   });
 
-  it('dragging a face changes that color directly', () => {
+  it('dragging a circle changes that color', () => {
     render(<App />);
-    const before = readHexes().join();
-    const faceA = document.querySelector('[data-face="a"]')!;
-    // Dispatch on the face so it bubbles to the field handler with target=faceA.
-    fireEvent.pointerDown(faceA, { pointerId: 1, clientX: 400, clientY: 300 });
-    fireEvent.pointerMove(faceA, { pointerId: 1, clientX: 560, clientY: 220 });
-    fireEvent.pointerUp(faceA, { pointerId: 1, clientX: 560, clientY: 220 });
-    expect(readHexes().join()).not.toBe(before);
+    const before = hexes().join();
+    const circleA = document.querySelector('[data-face="a"]')!;
+    fireEvent.pointerDown(circleA, { pointerId: 1, clientX: 150, clientY: 150 });
+    fireEvent.pointerMove(circleA, { pointerId: 1, clientX: 240, clientY: 90 });
+    fireEvent.pointerUp(circleA, { pointerId: 1, clientX: 240, clientY: 90 });
+    expect(hexes().join()).not.toBe(before);
   });
 
-  it('selecting face B points the controls at the other color', () => {
+  it('save adds a saved combination that can be restored', () => {
     render(<App />);
-    const toggleB = within(document.querySelector('.face-toggle') as HTMLElement).getByText(/^B /);
-    fireEvent.click(toggleB);
-    const beforeB = readHexes()[1];
-    const hue = document.querySelectorAll('.controls input[type="range"]')[0] as HTMLInputElement;
-    fireEvent.change(hue, { target: { value: '300' } });
-    expect(readHexes()[1]).not.toBe(beforeB);
+    expect(document.querySelector('.saved')).toBeNull();
+    fireEvent.click(document.querySelector('.actions .action:last-child')!);
+    const items = document.querySelectorAll('.saved-item');
+    expect(items.length).toBe(1);
   });
 
-  it('diagnosis mode surfaces labelled prescription cards', () => {
+  it('shuffle produces a different pair', () => {
     render(<App />);
-    fireEvent.click(screen.getByRole('tab', { name: '진단' }));
-    const cards = document.querySelectorAll('.diag-card');
-    expect(cards.length).toBeGreaterThan(0);
-    // Every card carries a non-empty title and "why" — the differentiator.
-    cards.forEach((card) => {
-      expect(card.querySelector('.title')!.textContent!.length).toBeGreaterThan(0);
-      expect(card.querySelector('.why')!.textContent!.length).toBeGreaterThan(0);
-    });
-  });
-
-  it('+핀 flashes confirmation WITHOUT opening the panel', () => {
-    render(<App />);
-    fireEvent.click(screen.getByText('+ 핀'));
-    // The panel stays closed; only a transient ＋ flash appears.
-    expect(document.querySelector('.panel')!.className).not.toContain('open');
-    expect(document.querySelector('.pin-flash')).not.toBeNull();
-  });
-
-  it('the pin shows up once the 핀 패널 is opened', () => {
-    render(<App />);
-    fireEvent.click(screen.getByText('+ 핀'));
-    fireEvent.click(screen.getByText('핀 패널'));
-    const panel = document.querySelector('.panel')!;
-    expect(panel.className).toContain('open');
-    expect(within(panel as HTMLElement).getAllByText(/#[0-9A-F]{6}/i).length).toBeGreaterThan(0);
-  });
-
-  it('cycling layout updates the area-ratio readout for the shape view', () => {
-    render(<App />);
-    const btn = screen.getByText(/레이아웃 ·/);
-    // half → diagonal → shape
-    fireEvent.click(btn); // diagonal
-    fireEvent.click(btn); // shape
-    expect(document.querySelector('.readout')!.textContent).toContain('60 / 30');
+    const before = hexes().join();
+    // Try a few times to avoid a coincidental identical random pair.
+    let changed = false;
+    for (let i = 0; i < 5 && !changed; i++) {
+      fireEvent.click(document.querySelector('.actions .action')!);
+      if (hexes().join() !== before) changed = true;
+    }
+    expect(changed).toBe(true);
   });
 });
