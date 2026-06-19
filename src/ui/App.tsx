@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   adjustStimulation,
   adjustHueDistance,
@@ -37,6 +37,16 @@ function pairAtLevel(level: number, baseHue = 250): Pair {
 }
 
 const INITIAL_PAIR = pairAtLevel(0.5);
+const PINS_KEY = 'halfway.pins.v1';
+
+function loadPins(): Pin[] {
+  try {
+    const raw = localStorage.getItem(PINS_KEY);
+    return raw ? (JSON.parse(raw) as Pin[]) : [];
+  } catch {
+    return [];
+  }
+}
 
 export function App() {
   const [mode, setMode] = useState<Mode>('dial');
@@ -44,8 +54,18 @@ export function App() {
   const [lock, setLock] = useState<Lock>('a');
   const [layout, setLayout] = useState<Layout>('half');
   const [panelOpen, setPanelOpen] = useState(false);
-  const [pins, setPins] = useState<Pin[]>([]);
+  const [pins, setPins] = useState<Pin[]>(loadPins);
   const [dialLevel, setDialLevel] = useState(0.5);
+
+  // Pins persist across reloads (spec keeps a pin tray; losing it on refresh
+  // would defeat the point of collecting combinations).
+  useEffect(() => {
+    try {
+      localStorage.setItem(PINS_KEY, JSON.stringify(pins));
+    } catch {
+      /* storage unavailable — pins stay in-memory only */
+    }
+  }, [pins]);
 
   const activeLock: Lock = mode === 'fixed' ? lock : null;
   const cap = useMemo(() => caption(pair), [pair]);

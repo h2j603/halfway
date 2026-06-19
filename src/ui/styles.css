@@ -166,6 +166,9 @@ button {
 .readout .hex:hover {
   text-decoration: underline;
 }
+.readout .ratio.low {
+  color: var(--warn);
+}
 .readout .swatch {
   width: 11px;
   height: 11px;

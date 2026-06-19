@@ -51,7 +51,16 @@ export function Readout({ pair, layout }: Props) {
         {copied === hexB ? <span className="copied-toast">복사됨</span> : hexB}
       </span>
       <span className="sep">·</span>
-      <span title="WCAG 대비비">{ratio.toFixed(2)}:1</span>
+      <span
+        className={ratio < 4.5 ? 'ratio low' : 'ratio'}
+        title={
+          ratio < 4.5
+            ? `WCAG 대비비 — AA(4.5:1) 미만, 본문 가독성 주의`
+            : 'WCAG 대비비'
+        }
+      >
+        {ratio.toFixed(2)}:1{ratio < 4.5 ? ' ⚠' : ''}
+      </span>
       <span className="sep">·</span>
       <span title="면적 비율">{ratioLabel(layout)}</span>
     </div>
