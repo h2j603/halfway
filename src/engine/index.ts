@@ -27,7 +27,10 @@ export {
   adjustStimulation,
   adjustHueDistance,
   adjustContrast,
+  nudgeColor,
+  setColor,
   pairFromParams,
+  COLOR_BOUNDS,
   type Lock,
 } from './manipulate';
 export { suggestAdjustments } from './suggest';

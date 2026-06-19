@@ -1,53 +1,66 @@
 import { useRef, type PointerEvent as ReactPointerEvent } from 'react';
-import { oklchToCss, type Pair, type Lock } from '../engine';
+import { oklchToCss, type Pair } from '../engine';
 
 export type Layout = 'half' | 'diagonal' | 'shape';
 
 interface Props {
   pair: Pair;
   layout: Layout;
-  lock: Lock;
-  /** Called continuously during drag with per-move deltas (already scaled). */
-  onDrag: (deltas: { chroma: number; hue: number }) => void;
-  onLockToggle?: (which: 'a' | 'b') => void;
+  /** Currently selected face (the one sliders act on). */
+  selected: 'a' | 'b';
+  onSelect: (which: 'a' | 'b') => void;
+  /** Continuous drag deltas for one face: hue in degrees, lightness in 0…1 units. */
+  onColorDrag: (which: 'a' | 'b', delta: { hue: number; lightness: number }) => void;
 }
 
+// A full-width drag sweeps the whole hue wheel; a full-height drag spans lightness.
+const HUE_SPAN = 360;
+const LIGHT_SPAN = 1;
+
 /**
- * The big color field. Vertical drag → chroma (stimulation intensity),
- * horizontal drag → hue distance. The layout prop only changes *how* the two
- * faces are arranged; it never changes the color values (spec: 뷰 모드 전용).
+ * The big color field — now a *direct* editor. You drag a face to change that
+ * color: left/right = hue (full wheel), up/down = lightness. Tap a face to
+ * select it for the sliders. Each color moves independently, so any pair is
+ * reachable. Layout only changes how the two faces are arranged (view-only).
  */
-export function ColorField({ pair, layout, lock, onDrag, onLockToggle }: Props) {
+export function ColorField({ pair, layout, selected, onSelect, onColorDrag }: Props) {
   const ref = useRef<HTMLDivElement>(null);
-  const dragging = useRef(false);
+  const active = useRef<'a' | 'b' | null>(null);
+  const moved = useRef(false);
   const last = useRef({ x: 0, y: 0 });
 
+  function faceAt(target: EventTarget | null): 'a' | 'b' | null {
+    const el = (target as HTMLElement | null)?.closest('[data-face]');
+    return (el?.getAttribute('data-face') as 'a' | 'b' | null) ?? null;
+  }
+
   function onPointerDown(e: ReactPointerEvent<HTMLDivElement>) {
-    if ((e.target as HTMLElement).closest('.lock-badge')) return;
-    dragging.current = true;
+    const which = faceAt(e.target);
+    if (!which) return;
+    active.current = which;
+    moved.current = false;
     last.current = { x: e.clientX, y: e.clientY };
+    onSelect(which);
     ref.current?.setPointerCapture(e.pointerId);
     ref.current?.classList.add('dragging');
   }
 
   function onPointerMove(e: ReactPointerEvent<HTMLDivElement>) {
-    if (!dragging.current || !ref.current) return;
+    if (!active.current || !ref.current) return;
     const rect = ref.current.getBoundingClientRect();
     const dx = (e.clientX - last.current.x) / rect.width;
     const dy = (e.clientY - last.current.y) / rect.height;
+    if (Math.abs(dx) > 0.002 || Math.abs(dy) > 0.002) moved.current = true;
     last.current = { x: e.clientX, y: e.clientY };
-    // Up (negative dy) increases stimulation; right (positive dx) widens hue.
-    onDrag({ chroma: -dy, hue: dx });
+    // Right = hue advances; up = lighter.
+    onColorDrag(active.current, { hue: dx * HUE_SPAN, lightness: -dy * LIGHT_SPAN });
   }
 
   function endDrag(e: ReactPointerEvent<HTMLDivElement>) {
-    dragging.current = false;
+    active.current = null;
     ref.current?.releasePointerCapture(e.pointerId);
     ref.current?.classList.remove('dragging');
   }
-
-  const aCss = oklchToCss(pair.a);
-  const bCss = oklchToCss(pair.b);
 
   return (
     <div
@@ -58,57 +71,45 @@ export function ColorField({ pair, layout, lock, onDrag, onLockToggle }: Props) 
       onPointerUp={endDrag}
       onPointerCancel={endDrag}
     >
-      {renderFaces(layout, aCss, bCss)}
-
-      {lock && onLockToggle && (
-        <>
-          <button
-            className="lock-badge"
-            style={lockPos('a', layout)}
-            onClick={() => onLockToggle('a')}
-            title="잠금 토글"
-          >
-            {lock === 'a' ? '🔒 A' : '🔓 A'}
-          </button>
-          <button
-            className="lock-badge"
-            style={lockPos('b', layout)}
-            onClick={() => onLockToggle('b')}
-            title="잠금 토글"
-          >
-            {lock === 'b' ? '🔒 B' : '🔓 B'}
-          </button>
-        </>
-      )}
+      {renderFaces(layout, pair, selected)}
 
       <div className="axis-hint">
-        ↕ 자극(채도)
-        <br />
-        ↔ 색상거리
+        색면을 끌어 조절
+        <br />↔ 색상 · ↕ 명도
       </div>
     </div>
   );
 }
 
-function renderFaces(layout: Layout, a: string, b: string) {
+function faceProps(which: 'a' | 'b', selected: 'a' | 'b', bg: string): React.HTMLAttributes<HTMLDivElement> & { 'data-face': string } {
+  return {
+    className: `face${selected === which ? ' selected' : ''}`,
+    'data-face': which,
+    style: { background: bg },
+  };
+}
+
+function renderFaces(layout: Layout, pair: Pair, selected: 'a' | 'b') {
+  const a = oklchToCss(pair.a);
+  const b = oklchToCss(pair.b);
+
   if (layout === 'diagonal') {
     return (
       <>
-        <div className="face" style={{ background: b }} />
+        <div {...faceProps('b', selected, b)} />
         <div
-          className="face"
+          {...faceProps('a', selected, a)}
           style={{ background: a, clipPath: 'polygon(0 0, 100% 0, 0 100%)' }}
         />
       </>
     );
   }
   if (layout === 'shape') {
-    // B as the field (~70%), A as a 60/30-style block over it.
     return (
       <>
-        <div className="face" style={{ background: b }} />
+        <div {...faceProps('b', selected, b)} />
         <div
-          className="face"
+          {...faceProps('a', selected, a)}
           style={{
             background: a,
             inset: 'auto',
@@ -126,20 +127,8 @@ function renderFaces(layout: Layout, a: string, b: string) {
   // half — A on top, B on bottom, the default abutting layout.
   return (
     <>
-      <div className="face" style={{ background: a, bottom: '50%' }} />
-      <div className="face" style={{ background: b, top: '50%' }} />
+      <div {...faceProps('a', selected, a)} style={{ background: a, bottom: '50%' }} />
+      <div {...faceProps('b', selected, b)} style={{ background: b, top: '50%' }} />
     </>
   );
-}
-
-function lockPos(which: 'a' | 'b', layout: Layout): React.CSSProperties {
-  if (layout === 'half') {
-    return which === 'a' ? { left: 14, top: 14 } : { left: 14, bottom: 14 };
-  }
-  if (layout === 'diagonal') {
-    return which === 'a' ? { left: 14, top: 14 } : { right: 14, bottom: 14 };
-  }
-  return which === 'a'
-    ? { left: '22%', top: '24%' }
-    : { right: 14, bottom: 14 };
 }

@@ -11,6 +11,8 @@ import {
   adjustStimulation,
   adjustHueDistance,
   adjustContrast,
+  nudgeColor,
+  setColor,
   pairFromParams,
   suggestAdjustments,
   generateCandidates,
@@ -157,6 +159,38 @@ describe('manipulation primitives are pure and bounded', () => {
     const after = adjustStimulation(pair, 0.2, 'a');
     expect(after.a).toEqual(pair.a);
     expect(after.b.c).toBeGreaterThan(pair.b.c);
+  });
+
+  it('nudgeColor edits only the chosen color, wraps hue, clamps l/c', () => {
+    const moved = nudgeColor(pair, 'b', { hue: 200, lightness: 0.3, chroma: 0.05 });
+    expect(moved.a).toEqual(pair.a); // a untouched
+    expect(moved.b.h).toBeCloseTo((pair.b.h + 200) % 360, 5);
+    expect(moved.b.l).toBeGreaterThan(pair.b.l);
+    // hue wraps around 360
+    const wrapped = nudgeColor({ a: pair.a, b: { l: 0.5, c: 0.1, h: 350 } }, 'b', { hue: 30 });
+    expect(wrapped.b.h).toBeCloseTo(20, 5);
+    // lightness clamps within bounds
+    const tooDark = nudgeColor(pair, 'a', { lightness: -5 });
+    expect(tooDark.a.l).toBeGreaterThanOrEqual(0.05);
+  });
+
+  it('setColor sets absolute values on one color, leaving the other intact', () => {
+    const out = setColor(pair, 'a', { h: 123, l: 0.7, c: 0.2 });
+    expect(out.b).toEqual(pair.b);
+    expect(out.a).toEqual({ h: 123, l: 0.7, c: 0.2 });
+    // partial patch keeps the rest
+    const hueOnly = setColor(pair, 'a', { h: 45 });
+    expect(hueOnly.a.l).toBe(pair.a.l);
+    expect(hueOnly.a.h).toBe(45);
+  });
+
+  it('two colors are fully independent — A can be blue while B is green', () => {
+    let p: Pair = { a: { l: 0.5, c: 0.15, h: 0 }, b: { l: 0.5, c: 0.15, h: 0 } };
+    p = setColor(p, 'a', { h: 260 }); // blue
+    p = setColor(p, 'b', { h: 145 }); // green
+    expect(p.a.h).toBe(260);
+    expect(p.b.h).toBe(145);
+    expect(hueDistance(p.a, p.b)).toBeGreaterThan(100);
   });
 
   it('pairFromParams composes the expected hue distance and contrast', () => {

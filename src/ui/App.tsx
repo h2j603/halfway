@@ -1,22 +1,21 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  adjustStimulation,
-  adjustHueDistance,
-  adjustContrast,
+  nudgeColor,
+  setColor,
   pairFromParams,
   caption,
-  STEPS,
   CHROMA_MAX,
   type Pair,
-  type Lock,
+  type Oklch,
 } from '../engine';
 import { ColorField, type Layout } from './ColorField';
+import { ColorControls } from './ColorControls';
 import { Readout } from './Readout';
 import { SpectrumStrip } from './SpectrumStrip';
 import { PinPanel, type Pin } from './PinPanel';
 import { Diagnosis } from './Diagnosis';
 
-type Mode = 'dial' | 'fixed' | 'diagnosis';
+type Mode = 'edit' | 'dial' | 'diagnosis';
 
 const LAYOUTS: Layout[] = ['half', 'diagonal', 'shape'];
 const LAYOUT_LABEL: Record<Layout, string> = {
@@ -26,7 +25,7 @@ const LAYOUT_LABEL: Record<Layout, string> = {
 };
 
 /** Build a pair whose stimulation roughly equals `level` (0…1), for dial entry. */
-function pairAtLevel(level: number, baseHue = 250): Pair {
+function pairAtLevel(level: number, baseHue: number): Pair {
   return pairFromParams({
     baseLightness: 0.58,
     chroma: level * CHROMA_MAX,
@@ -36,7 +35,7 @@ function pairAtLevel(level: number, baseHue = 250): Pair {
   });
 }
 
-const INITIAL_PAIR = pairAtLevel(0.5);
+const INITIAL_PAIR = pairAtLevel(0.5, 250);
 const PINS_KEY = 'halfway.pins.v1';
 
 function loadPins(): Pin[] {
@@ -49,16 +48,15 @@ function loadPins(): Pin[] {
 }
 
 export function App() {
-  const [mode, setMode] = useState<Mode>('dial');
+  const [mode, setMode] = useState<Mode>('edit');
   const [pair, setPair] = useState<Pair>(INITIAL_PAIR);
-  const [lock, setLock] = useState<Lock>('a');
+  const [selected, setSelected] = useState<'a' | 'b'>('a');
   const [layout, setLayout] = useState<Layout>('half');
   const [panelOpen, setPanelOpen] = useState(false);
   const [pins, setPins] = useState<Pin[]>(loadPins);
   const [dialLevel, setDialLevel] = useState(0.5);
 
-  // Pins persist across reloads (spec keeps a pin tray; losing it on refresh
-  // would defeat the point of collecting combinations).
+  // Pins persist across reloads.
   useEffect(() => {
     try {
       localStorage.setItem(PINS_KEY, JSON.stringify(pins));
@@ -67,19 +65,16 @@ export function App() {
     }
   }, [pins]);
 
-  const activeLock: Lock = mode === 'fixed' ? lock : null;
   const cap = useMemo(() => caption(pair), [pair]);
 
-  function handleDrag({ chroma, hue }: { chroma: number; hue: number }) {
-    setPair((p) => {
-      let next = adjustStimulation(p, chroma * STEPS.chroma, activeLock);
-      next = adjustHueDistance(next, hue * STEPS.hue, activeLock);
-      return next;
-    });
+  // Direct face drag: move the dragged color's hue/lightness freely.
+  function handleColorDrag(which: 'a' | 'b', delta: { hue: number; lightness: number }) {
+    setPair((p) => nudgeColor(p, which, delta));
   }
 
-  function bumpContrast(dir: 1 | -1) {
-    setPair((p) => adjustContrast(p, dir * STEPS.contrast, activeLock));
+  // Slider edits: set absolute hue/lightness/chroma on the selected color.
+  function handleControlChange(patch: Partial<Oklch>) {
+    setPair((p) => setColor(p, selected, patch));
   }
 
   function cycleLayout() {
@@ -93,26 +88,36 @@ export function App() {
 
   function onDialChange(level: number) {
     setDialLevel(level);
-    setPair(pairAtLevel(level));
+    // Keep the current A hue as the base so the dial explores around the user's
+    // chosen color family rather than always snapping back to blue.
+    setPair((p) => pairAtLevel(level, p.a.h));
+  }
+
+  function randomizePair() {
+    const baseHue = Math.floor(Math.random() * 360);
+    setPair(pairAtLevel(0.45 + Math.random() * 0.25, baseHue));
   }
 
   return (
     <div className="app">
       <div className="stage">
         <div className="topbar">
-          <div className="segmented" role="tablist" aria-label="진입 모드">
-            {(['dial', 'fixed', 'diagnosis'] as Mode[]).map((m) => (
+          <div className="segmented" role="tablist" aria-label="모드">
+            {(['edit', 'dial', 'diagnosis'] as Mode[]).map((m) => (
               <button
                 key={m}
                 role="tab"
                 aria-pressed={mode === m}
                 onClick={() => setMode(m)}
               >
-                {m === 'dial' ? '다이얼' : m === 'fixed' ? '고정' : '진단'}
+                {m === 'edit' ? '편집' : m === 'dial' ? '다이얼' : '진단'}
               </button>
             ))}
           </div>
           <div className="topbar-right">
+            <button className="ghost-btn" onClick={randomizePair} title="무작위 시작점">
+              🎲 랜덤
+            </button>
             <button className="ghost-btn" onClick={cycleLayout}>
               레이아웃 · {LAYOUT_LABEL[layout]}
             </button>
@@ -133,9 +138,9 @@ export function App() {
           <ColorField
             pair={pair}
             layout={layout}
-            lock={activeLock}
-            onDrag={handleDrag}
-            onLockToggle={(which) => setLock(which)}
+            selected={selected}
+            onSelect={setSelected}
+            onColorDrag={handleColorDrag}
           />
 
           {mode === 'dial' && (
@@ -151,15 +156,8 @@ export function App() {
                 style={{ width: '100%' }}
                 aria-label="자극 레벨"
               />
-              <div
-                style={{
-                  fontFamily: 'var(--mono)',
-                  fontSize: 11,
-                  color: 'var(--ink-dim)',
-                  marginTop: 4,
-                }}
-              >
-                자극 {Math.round(dialLevel * 100)}% — 이후 색면을 드래그해 다듬으세요
+              <div className="hint-mono">
+                자극 {Math.round(dialLevel * 100)}% — 이후 색면을 끌어 자유롭게 다듬으세요
               </div>
             </div>
           )}
@@ -174,15 +172,12 @@ export function App() {
           </div>
         </div>
 
-        <div className="contrast-row">
-          <button className="pill" onClick={() => bumpContrast(-1)}>
-            대비 −
-          </button>
-          <span className="label">명암대비</span>
-          <button className="pill" onClick={() => bumpContrast(1)}>
-            대비 +
-          </button>
-        </div>
+        <ColorControls
+          pair={pair}
+          selected={selected}
+          onSelect={setSelected}
+          onChange={handleControlChange}
+        />
 
         <SpectrumStrip anchor={pair} onPick={setPair} />
       </div>

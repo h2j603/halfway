@@ -36,12 +36,6 @@ function readHexes(): string[] {
   return (readout.textContent?.match(/#[0-9A-F]{6}/g) ?? []) as string[];
 }
 
-/** Current WCAG ratio shown in the readout, e.g. "4.21:1" → 4.21. */
-function readRatio(): number {
-  const m = document.querySelector('.readout')!.textContent?.match(/([\d.]+):1/);
-  return m ? Number(m[1]) : NaN;
-}
-
 describe('App — runtime smoke', () => {
   it('mounts and shows two distinct HEX values in the readout', () => {
     render(<App />);
@@ -55,22 +49,45 @@ describe('App — runtime smoke', () => {
     expect(document.querySelector('.caption')!.textContent!.length).toBeGreaterThan(0);
   });
 
-  it('contrast + button widens the WCAG ratio', () => {
+  it('the hue slider freely changes the selected color', () => {
     render(<App />);
-    const before = readRatio();
-    fireEvent.click(screen.getByText('대비 +'));
-    fireEvent.click(screen.getByText('대비 +'));
-    expect(readRatio()).toBeGreaterThan(before);
+    const before = readHexes()[0]; // color A (default selected)
+    // Sliders in .controls are [hue, lightness, chroma]; drive hue far.
+    const hue = document.querySelectorAll('.controls input[type="range"]')[0] as HTMLInputElement;
+    fireEvent.change(hue, { target: { value: '20' } });
+    const after = readHexes()[0];
+    expect(after).not.toBe(before);
   });
 
-  it('dragging the field changes the colors', () => {
+  it('lightness can be pushed independently (full range, not locked to a base)', () => {
+    render(<App />);
+    const light = document.querySelectorAll('.controls input[type="range"]')[1] as HTMLInputElement;
+    fireEvent.change(light, { target: { value: '0.1' } });
+    const darkHex = readHexes()[0];
+    fireEvent.change(light, { target: { value: '0.95' } });
+    const lightHex = readHexes()[0];
+    expect(darkHex).not.toBe(lightHex);
+  });
+
+  it('dragging a face changes that color directly', () => {
     render(<App />);
     const before = readHexes().join();
-    const field = document.querySelector('.field')!;
-    fireEvent.pointerDown(field, { pointerId: 1, clientX: 400, clientY: 300 });
-    fireEvent.pointerMove(field, { pointerId: 1, clientX: 520, clientY: 160 });
-    fireEvent.pointerUp(field, { pointerId: 1, clientX: 520, clientY: 160 });
+    const faceA = document.querySelector('[data-face="a"]')!;
+    // Dispatch on the face so it bubbles to the field handler with target=faceA.
+    fireEvent.pointerDown(faceA, { pointerId: 1, clientX: 400, clientY: 300 });
+    fireEvent.pointerMove(faceA, { pointerId: 1, clientX: 560, clientY: 220 });
+    fireEvent.pointerUp(faceA, { pointerId: 1, clientX: 560, clientY: 220 });
     expect(readHexes().join()).not.toBe(before);
+  });
+
+  it('selecting face B points the controls at the other color', () => {
+    render(<App />);
+    const toggleB = within(document.querySelector('.face-toggle') as HTMLElement).getByText(/^B /);
+    fireEvent.click(toggleB);
+    const beforeB = readHexes()[1];
+    const hue = document.querySelectorAll('.controls input[type="range"]')[0] as HTMLInputElement;
+    fireEvent.change(hue, { target: { value: '300' } });
+    expect(readHexes()[1]).not.toBe(beforeB);
   });
 
   it('diagnosis mode surfaces labelled prescription cards', () => {

@@ -20,6 +20,43 @@ export type Lock = 'a' | 'b' | null;
 const MIN_L = 0.05;
 const MAX_L = 0.97;
 
+/** Bounds used when editing a single color directly. */
+export const COLOR_BOUNDS = {
+  lMin: MIN_L,
+  lMax: MAX_L,
+  cMax: CHROMA_MAX,
+} as const;
+
+/**
+ * Edit one color of the pair directly (free, per-face manipulation). Deltas are
+ * added to the current values and clamped to the valid OKLCH ranges; hue wraps.
+ * This is the freeform input model — each color can be moved anywhere on its own.
+ */
+export function nudgeColor(
+  pair: Pair,
+  which: 'a' | 'b',
+  delta: { hue?: number; lightness?: number; chroma?: number },
+): Pair {
+  const c = pair[which];
+  const next: Oklch = {
+    h: normalizeHue(c.h + (delta.hue ?? 0)),
+    l: clamp(c.l + (delta.lightness ?? 0), MIN_L, MAX_L),
+    c: clamp(c.c + (delta.chroma ?? 0), 0, CHROMA_MAX),
+  };
+  return which === 'a' ? { a: next, b: pair.b } : { a: pair.a, b: next };
+}
+
+/** Set absolute values on one color of the pair (clamped/normalized). */
+export function setColor(pair: Pair, which: 'a' | 'b', patch: Partial<Oklch>): Pair {
+  const c = pair[which];
+  const next: Oklch = {
+    h: normalizeHue(patch.h ?? c.h),
+    l: clamp(patch.l ?? c.l, MIN_L, MAX_L),
+    c: clamp(patch.c ?? c.c, 0, CHROMA_MAX),
+  };
+  return which === 'a' ? { a: next, b: pair.b } : { a: pair.a, b: next };
+}
+
 /**
  * Vertical-drag lever: change the shared chroma (intensity) of both colors.
  * `delta` is in chroma units. In fixed mode only the unlocked color moves.
